@@ -1,0 +1,39 @@
+name: Dashboard
+options:
+  bundleIdPrefix: com.berkecaan
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Dashboard:
+    type: application
+    platform: iOS
+    sources:
+      - path: Dashboard
+        excludes:
+          - "Resources/Info.plist"
+          - "Resources/Dashboard.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.berkecaan.dashboard
+        INFOPLIST_FILE: Dashboard/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Dashboard/Resources/Dashboard.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SPOTIFY_CLIENT_ID: ""
+schemes:
+  Dashboard:
+    build:
+      targets:
+        Dashboard: all
+    run:
+      config: Debug
+    archive:
+      config: Release
