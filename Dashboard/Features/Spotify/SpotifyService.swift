@@ -19,6 +19,29 @@ struct SpotifyTrack: Equatable {
     let durationMs: Int
 }
 
+struct SpotifyPlaybackDevice: Decodable, Identifiable {
+    let id: String?
+    let name: String
+    let type: String
+    let isActive: Bool
+    let isRestricted: Bool
+
+    var canControl: Bool { id != nil && !isRestricted }
+    var symbol: String {
+        switch type.lowercased() {
+        case "smartphone": return "iphone"
+        case "computer": return "desktopcomputer"
+        case "speaker": return "hifispeaker.fill"
+        case "tv": return "tv"
+        default: return "speaker.wave.2.fill"
+        }
+    }
+}
+
+private struct SpotifyDevicesResponse: Decodable {
+    let devices: [SpotifyPlaybackDevice]
+}
+
 enum SpotifyError: Error { case unauthorized, authFailed, cancelled }
 
 // MARK: - PKCE
@@ -98,7 +121,7 @@ private struct PlaybackState: Decodable {
         let album: Album?
         let images: [Img]?
     }
-    struct Device: Decodable { let name: String }
+    struct Device: Decodable { let id: String?; let name: String }
     let isPlaying: Bool
     let progressMs: Int?
     let item: Item?
@@ -117,6 +140,13 @@ final class SpotifyService: ObservableObject {
     @Published private(set) var progressMs = 0
     @Published private(set) var deviceName: String?
     @Published var notice: String?
+    @Published private(set) var devices: [SpotifyPlaybackDevice] = []
+    @Published private(set) var isLoadingDevices = false
+    @Published private(set) var isSendingCommand = false
+    @Published private(set) var deviceID: String?
+    @Published private(set) var deviceNotice: String?
+    @Published var needsDeviceSelection = false
+    private var lastDeviceFetch: Date?
 
     var clientID = "" { didSet { refreshStatus() } }
 
@@ -192,6 +222,11 @@ final class SpotifyService: ObservableObject {
         track = nil
         isPlaying = false
         deviceName = nil
+        deviceID = nil
+        devices = []
+        deviceNotice = nil
+        lastDeviceFetch = nil
+        needsDeviceSelection = false
         stopPolling()
         status = clientID.isEmpty ? .notConfigured : .disconnected
     }
@@ -199,33 +234,133 @@ final class SpotifyService: ObservableObject {
     // MARK: Oynatma kontrolü (Premium + aktif cihaz gerekir)
 
     func togglePlayPause() {
-        let wasPlaying = isPlaying
-        isPlaying.toggle()
-        Task { await command("PUT", wasPlaying ? "/me/player/pause" : "/me/player/play") }
+        guard status == .connected, !isSendingCommand else { return }
+        Task {
+            isSendingCommand = true
+            defer { isSendingCommand = false }
+            if !isPlaying && deviceID == nil {
+                guard await refreshDevices(force: true) else { return }
+                guard deviceID != nil else {
+                    notice = "Oynatmak için bir Spotify cihazı seçin."
+                    needsDeviceSelection = true
+                    return
+                }
+            }
+            await command("PUT", isPlaying ? "/me/player/pause" : "/me/player/play")
+        }
     }
-    func next() { Task { await command("POST", "/me/player/next") } }
-    func previous() { Task { await command("POST", "/me/player/previous") } }
 
-    func seek(toFraction f: Double) {
-        guard let t = track else { return }
-        let ms = Int(Double(t.durationMs) * min(max(f, 0), 1))
-        progressMs = ms
-        Task { await command("PUT", "/me/player/seek", query: [.init(name: "position_ms", value: "\(ms)")]) }
+    func next() { perform("POST", "/me/player/next") }
+    func previous() { perform("POST", "/me/player/previous") }
+
+    func seek(toFraction fraction: Double) {
+        guard let track else { return }
+        let milliseconds = Int(Double(track.durationMs) * min(max(fraction, 0), 1))
+        perform("PUT", "/me/player/seek", query: [.init(name: "position_ms", value: "\(milliseconds)")])
+    }
+
+    private func perform(_ method: String, _ path: String, query: [URLQueryItem] = []) {
+        guard status == .connected, !isSendingCommand else { return }
+        Task {
+            isSendingCommand = true
+            defer { isSendingCommand = false }
+            await command(method, path, query: query)
+        }
     }
 
     private func command(_ method: String, _ path: String, query: [URLQueryItem] = []) async {
         do {
-            let (_, code) = try await send(method, path, query: query)
-            switch code {
-            case 200, 202, 204: notice = nil
-            case 403: notice = "Oynatma kontrolü Spotify Premium gerektirir"
-            case 404: notice = "Aktif Spotify cihazı yok. Spotify uygulamasında bir şarkı başlatın."
-            default: notice = "Spotify komutu başarısız (\(code))"
+            var parameters = query
+            if let deviceID { parameters.append(.init(name: "device_id", value: deviceID)) }
+            let (_, code) = try await send(method, path, query: parameters)
+            guard (200..<300).contains(code) else {
+                notice = playbackError(code)
+                if code == 404 {
+                    deviceID = nil
+                    await refreshDevices(force: true)
+                    needsDeviceSelection = true
+                }
+                return
             }
-            try? await Task.sleep(for: .milliseconds(500))
+            notice = nil
+            try await Task.sleep(for: .milliseconds(500))
             await fetchState()
+        } catch is CancellationError {
+            return
         } catch {
-            notice = "Spotify'a ulaşılamıyor"
+            notice = "Spotify komutu gönderilemedi. Bağlantıyı kontrol edin."
+        }
+    }
+
+    @discardableResult
+    func refreshDevices(force: Bool = false) async -> Bool {
+        guard status == .connected, !isLoadingDevices else { return false }
+        if !force, let lastDeviceFetch, Date().timeIntervalSince(lastDeviceFetch) < 15 { return true }
+        isLoadingDevices = true
+        defer { isLoadingDevices = false }
+        do {
+            let (data, code) = try await send("GET", "/me/player/devices")
+            guard code == 200 else {
+                deviceNotice = playbackError(code)
+                notice = deviceNotice
+                return false
+            }
+            devices = try JSONDecoder.snake.decode(SpotifyDevicesResponse.self, from: data)
+                .devices.filter { $0.id != nil }
+            lastDeviceFetch = Date()
+            if let activeDevice = devices.first(where: { $0.isActive && $0.canControl }) {
+                deviceID = activeDevice.id
+                deviceName = activeDevice.name
+            } else if let selected = deviceID, !devices.contains(where: { $0.id == selected && $0.canControl }) {
+                deviceID = nil
+                deviceName = nil
+            }
+            deviceNotice = devices.isEmpty ? "Spotify erişilebilir bir oynatma cihazı bildirmiyor." : nil
+            return true
+        } catch SpotifyError.unauthorized {
+            signOut()
+            notice = "Spotify oturumu sona erdi, tekrar bağlanın."
+        } catch {
+            deviceNotice = "Cihaz listesi alınamadı. Yeniden deneyin."
+            notice = deviceNotice
+        }
+        return false
+    }
+
+    /// Transfers and starts playback only after the user explicitly selects a device.
+    @discardableResult
+    func useDevice(_ device: SpotifyPlaybackDevice) async -> Bool {
+        guard let id = device.id, device.canControl, !isSendingCommand else { return false }
+        isSendingCommand = true
+        defer { isSendingCommand = false }
+        do {
+            let payload: [String: Any] = ["device_ids": [id], "play": true]
+            let body = try JSONSerialization.data(withJSONObject: payload)
+            let (_, code) = try await send("PUT", "/me/player", body: body)
+            guard (200..<300).contains(code) else {
+                deviceNotice = playbackError(code)
+                notice = deviceNotice
+                return false
+            }
+            deviceID = id
+            deviceName = device.name
+            deviceNotice = nil
+            notice = nil
+            try await Task.sleep(for: .milliseconds(700))
+            await fetchState()
+            return true
+        } catch {
+            deviceNotice = "Cihaza bağlanılamadı. Yeniden deneyin."
+            return false
+        }
+    }
+
+    private func playbackError(_ code: Int) -> String {
+        switch code {
+        case 403: return "Spotify erişimi reddedildi. Premium ve geliştirici uygulaması izinlerini kontrol edin."
+        case 404: return "Seçili cihaz erişilemiyor. Dashboard içinden başka bir cihaz seçin."
+        case 429: return "Spotify istek sınırına ulaşıldı. Biraz bekleyip tekrar deneyin."
+        default: return "Spotify işlemi başarısız (\(code))."
         }
     }
 
@@ -267,8 +402,9 @@ final class SpotifyService: ObservableObject {
             case 204:
                 track = nil
                 isPlaying = false
-                deviceName = nil
-                notice = "Aktif Spotify cihazı yok. Spotify uygulamasında bir şarkı başlatın."
+                progressMs = 0
+                await refreshDevices()
+                notice = deviceID == nil ? "Cihaz seçerek oynatmayı başlatın." : "Son dinlediğinizden devam etmek için oynatın."
             case 403:
                 notice = "Spotify erişimi reddedildi. Premium ve geliştirici uygulamasının kullanıcı izinlerini kontrol edin."
             default:
@@ -289,6 +425,7 @@ final class SpotifyService: ObservableObject {
         isPlaying = s.isPlaying
         progressMs = s.progressMs ?? 0
         deviceName = s.device?.name
+        deviceID = s.device?.id
         guard let it = s.item else { track = nil; return }
         let img = it.album?.images.first ?? it.images?.first
         track = SpotifyTrack(
@@ -302,19 +439,21 @@ final class SpotifyService: ObservableObject {
     // MARK: HTTP ve token
 
     private func send(_ method: String, _ path: String, query: [URLQueryItem] = [],
-                      retry: Bool = true) async throws -> (Data, Int) {
+                      body: Data? = nil, retry: Bool = true) async throws -> (Data, Int) {
         let token = try await validToken()
         var comps = URLComponents(string: "https://api.spotify.com/v1\(path)")!
         if !query.isEmpty { comps.queryItems = query }
         var req = URLRequest(url: comps.url!)
         req.httpMethod = method
+        req.httpBody = body
+        if body != nil { req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401 {
             guard retry else { throw SpotifyError.unauthorized }
             try await refresh()
-            return try await send(method, path, query: query, retry: false)
+            return try await send(method, path, query: query, body: body, retry: false)
         }
         return (data, code)
     }

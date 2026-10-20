@@ -3,7 +3,6 @@ import SwiftUI
 struct SpotifyPanel: View {
     @EnvironmentObject private var spotify: SpotifyService
     @Environment(\.dashAccent) private var accent
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         GeometryReader { geo in
@@ -12,9 +11,7 @@ struct SpotifyPanel: View {
                 case .notConfigured: message("Ayarlar'dan Spotify Client ID girin", icon: "gearshape")
                 case .disconnected: connectView
                 case .connecting: message("Spotify'a bağlanılıyor…", icon: "arrow.triangle.2.circlepath")
-                case .connected:
-                    if spotify.track == nil { emptyPlayer }
-                    else { player(width: geo.size.width, height: geo.size.height) }
+                case .connected: player(width: geo.size.width, height: geo.size.height)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -22,6 +19,7 @@ struct SpotifyPanel: View {
         .padding(12)
         .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 25))
         .overlay(RoundedRectangle(cornerRadius: 25).strokeBorder(.white.opacity(0.10)))
+        .sheet(isPresented: $spotify.needsDeviceSelection) { SpotifyDevicesView() }
         .task { await spotify.fetchState() }
     }
 
@@ -41,50 +39,44 @@ struct SpotifyPanel: View {
         }
     }
 
-    private var emptyPlayer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Spotify bağlı", systemImage: "checkmark.circle.fill")
-                .font(.caption.weight(.semibold)).foregroundStyle(.green)
-            Text("Müziğini başlat").font(.headline)
-            Text(spotify.notice ?? "Spotify'da bir şarkı aç, ardından Dashboard'a dön.")
-                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            HStack(spacing: 10) {
-                Button("Spotify'ı aç", systemImage: "arrow.up.right.square") {
-                    openURL(URL(string: "https://open.spotify.com/")!)
-                }.buttonStyle(.borderedProminent).tint(.green).font(.caption.weight(.semibold))
-                Button { Task { await spotify.fetchState() } } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 40, height: 40)
-                }.buttonStyle(.plain).accessibilityLabel("Spotify durumunu yenile")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private func player(width: CGFloat, height: CGFloat) -> some View {
         let compact = height < 230
         let artSize = min(width * 0.26, height * 0.65, compact ? 88 : 220)
         return HStack(spacing: 10) {
             artwork.frame(width: artSize, height: artSize).clipped()
             VStack(alignment: .leading, spacing: compact ? 4 : 10) {
-                Label(spotify.deviceName.map { "Spotify · \($0)" } ?? "Spotify", systemImage: "waveform")
-                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(.green).lineLimit(1)
-                Text(spotify.track?.title ?? "")
+                Button {
+                    spotify.needsDeviceSelection = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Label(spotify.deviceName.map { "Spotify · \($0)" } ?? "Spotify · Cihaz seç", systemImage: "speaker.wave.2.fill")
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                    }
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(.green)
+                    .frame(minHeight: compact ? 20 : 32, alignment: .leading)
+                    .contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Spotify cihazlarını seç")
+                Text(spotify.track?.title ?? "Müziğin burada")
                     .font(compact ? .subheadline.weight(.bold) : .title2.weight(.bold))
                     .lineLimit(1).minimumScaleFactor(0.75)
-                Text(spotify.notice ?? spotify.track?.artist ?? "")
+                Text(spotify.notice ?? spotify.track?.artist ?? "Oynat veya bir cihaz seç")
                     .font(.caption).foregroundStyle(spotify.notice == nil ? Color.secondary : Color.orange).lineLimit(1)
                 Spacer(minLength: 0)
-                progress
+                progress.disabled(spotify.track == nil)
                 HStack(spacing: compact ? 8 : 18) {
                     Spacer(minLength: 0)
                     GlassIconButton(systemName: "backward.fill", size: compact ? 38 : 52) { spotify.previous() }
+                        .disabled(spotify.track == nil)
                     GlassIconButton(systemName: spotify.isPlaying ? "pause.fill" : "play.fill", size: compact ? 42 : 62, tint: accent) {
                         spotify.togglePlayPause()
                     }
                     GlassIconButton(systemName: "forward.fill", size: compact ? 38 : 52) { spotify.next() }
+                        .disabled(spotify.track == nil)
                     Spacer(minLength: 0)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .disabled(spotify.isSendingCommand)
         }
     }
 
@@ -124,5 +116,73 @@ struct SpotifyPanel: View {
     private func time(_ ms: Int) -> String {
         let seconds = max(0, ms / 1000)
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Device selection remains inside Dashboard; playback controls never launch another app.
+private struct SpotifyDevicesView: View {
+    @EnvironmentObject private var spotify: SpotifyService
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Cihazı seçtiğinizde müzik orada başlar. Kontroller Dashboard içinde kalır.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                Section("Spotify cihazları") {
+                    if spotify.isLoadingDevices && spotify.devices.isEmpty {
+                        ProgressView("Cihazlar aranıyor…")
+                    } else if spotify.devices.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Kullanılabilir cihaz yok", systemImage: "speaker.slash")
+                                .font(.headline)
+                            Text("Spotify'ın bu iPhone'da veya başka bir cihazda erişilebilir olması gerekir. Dashboard yeni bir Spotify ses cihazı oluşturamaz.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }.padding(.vertical, 8)
+                    } else {
+                        ForEach(spotify.devices) { device in
+                            Button {
+                                Task {
+                                    if await spotify.useDevice(device) { dismiss() }
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: device.symbol).frame(width: 30)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(device.name)
+                                        Text(device.isRestricted ? "Bu cihaz uzaktan kontrol edilemiyor" : (device.isActive ? "Şu anda aktif" : "Bu cihazda oynat"))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if device.id == spotify.deviceID { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                                }
+                                .contentShape(Rectangle()).padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!device.canControl || spotify.isSendingCommand)
+                        }
+                    }
+                    if let notice = spotify.deviceNotice {
+                        Text(notice).font(.caption).foregroundStyle(.orange)
+                    }
+                }
+                Section {
+                    Button("Cihazları yenile", systemImage: "arrow.clockwise") {
+                        Task { await spotify.refreshDevices(force: true) }
+                    }.disabled(spotify.isLoadingDevices)
+                } footer: {
+                    Text("Spotify Premium gerekir. Hesaba bağlanmak tek başına bir oynatma cihazını etkinleştirmez.")
+                }
+            }
+            .navigationTitle("Spotify cihazları")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Bitti") { dismiss() }
+                }
+            }
+            .task { await spotify.refreshDevices(force: true) }
+        }
     }
 }

@@ -75,7 +75,15 @@ Arşivin dış `dashboard-ios/` klasörü depo köküne açılır. Yanlışlıkl
 
 - Kullanılabilir ekran alanına göre hesaplanan sütunlar; kısa yatay ekrana uygun müzik ve hava kartları.
 - Kalıcı sol menü: panel, tam ekran harita, müzik, uygulama simgeleri ve ayarlar. Uygulamalar ekranı iç modülleri açar; iOS'ta yüklü tüm uygulamaları listelemez.
-- Şarkı yokken Spotify'ı açma ve durumu yenileme düğmeleri. Oynatma için Spotify Premium ve aktif cihaz gereksinimi devam eder.
+- Spotify kartında uygulama içi oynat/duraklat, parça geçişi ve ilerleme kontrolleri. Oynatma için Spotify Premium ve erişilebilir cihaz gereksinimi devam eder.
 - Ana ekranda kullanılmak üzere opak 1024×1024 Dashboard uygulama simgesi; build numarası 2.
 
 Derleme kontrolü gerçek iPhone üzerinde görsel veya Spotify oturum testi yerine geçmez.
+
+## 1.0.2 — Spotify kontrolleri Dashboard içinde
+
+Spotify kartı artık şarkı yokken de oynatıcıyı gösterir. Cihaz adı düğmesinden Dashboard içindeki Spotify Connect cihaz listesi açılır. Kullanıcı seçtiğinde cihazda oynatma başlatılır; hiçbir oynatma düğmesi Spotify uygulamasını veya web sitesini açmaz. Oynatma, duraklatma, önceki/sonraki parça ve zaman çizgisi Dashboard içinde yönetilir. Hesap bağlantısının OAuth izin ekranı değişmez.
+
+Dashboard bir Spotify ses cihazı değildir. Spotify uygulaması veya başka bir Spotify Connect cihazı erişilebilir olmalıdır; hiçbir cihaz bulunamazsa uygulama bunu açıkça bildirir. Web API oynatma komutları Premium gerektirir. API cihaz kimlikleri kalıcı olarak saklanmaz; kontrol kısıtlaması olan cihazlar seçilemez.
+
+Kaynaklar: [Spotify cihaz listesi](https://developer.spotify.com/documentation/web-api/reference/get-a-users-available-devices), [cihaz aktarımı](https://developer.spotify.com/documentation/web-api/reference/transfer-a-users-playback), [oynatma](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
