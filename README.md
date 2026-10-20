@@ -1,10 +1,9 @@
 # Dashboard (iOS)
 
-iPhone için yatay, premium araç paneli: MapKit navigasyon, Spotify, WeatherKit, GPS hız göstergesi.
+iPhone için yatay, premium araç paneli: MapKit navigasyon, Spotify, Open-Meteo hava durumu ve GPS hız göstergesi.
 Swift 6 · SwiftUI · MVVM · iOS 26+ · Liquid Glass.
 
-> **Durum:** Kod Linux ortamında yazıldı; **Xcode ile derlenmedi/test edilmedi.**
-> İlk derleme hataları çıkabilir. Doğrulama için [GitHub Actions](https://github.com/berkecaan/dashboard-ios/actions/workflows/ios-build.yml) içindeki "Unsigned build and IPA" işini kontrol edin.
+> **Kontrol:** GitHub Actions, iOS Release derlemesini ve simgenin uygulama paketinde bulunduğunu denetler. Canlı Spotify, konum ve görünümün gerçek cihazda ayrıca denenmesi gerekir.
 
 ## Kurulum
 
@@ -18,11 +17,9 @@ Xcode 26+ gerekir. Signing & Capabilities'ta kendi Team'inizi seçin, bundle id'
 (`project.yml` → `PRODUCT_BUNDLE_IDENTIFIER`; imzalı CI için `ios-build.yml` içindeki
 `ExportOptions` bundle id'sini de güncelleyin).
 
-## WeatherKit
-1. Apple Developer Program üyeliği gerekir.
-2. developer.apple.com → Identifiers → App ID'nizde **WeatherKit** hizmetini etkinleştirin.
-3. Xcode → Signing & Capabilities → **+ Capability → WeatherKit** (entitlement dosyada hazır).
-4. Etkinleştirme sonrası birkaç dakika bekleyin; imzasız derlemede WeatherKit çalışmaz.
+## Hava durumu
+
+Hava verileri [Open-Meteo](https://open-meteo.com/) üzerinden alınır; API anahtarı veya WeatherKit yetkisi gerekmez. Konum koordinatları yalnızca hava tahmini isteği için bu servise gönderilir. Güncel sıcaklık, hissedilen sıcaklık, üç günlük tahmin ve güneş doğuş/batış saatleri kullanılır. Veriler 15 dakikada bir veya konum 5 km değiştiğinde yenilenir. Hata durumunda yeniden deneme en erken 60 saniye sonra yapılır; bağlantı yoksa gerçek dışı veri üretilmez.
 
 ## Spotify
 1. developer.spotify.com/dashboard → uygulama oluşturun, **Redirect URI** olarak `dashboard-spotify://callback` ekleyin.
@@ -48,7 +45,7 @@ Dashboard sesi kendisi çalmaz; iPhone'daki Spotify veya başka bir cihazı uzak
 3. ZIP içindeki `Dashboard-unsigned.ipa` yeniden imzalama içindir; iPhone'a doğrudan kurulmaz. `.sha256` dosyası IPA'nın bütünlük kontrolüdür.
 4. Sertifika ve provisioning profile secret değerleri tanımlıysa **Signed IPA (optional)** ayrıca imzalı IPA üretir: **Artifacts → Dashboard-ipa**. Secret değerleri yoksa bu iş imzalama adımlarını atlar.
 
-İmzasız IPA her başarılı derlemede üretilir; bunun için Apple hesabı veya imza secret değeri gerekmez. İmzalı IPA'nın kurulabilmesi cihazın kullanılan provisioning profile kapsamında olmasını gerektirir. WeatherKit'in çalışması için uygulamanın WeatherKit yetkisi içeren geçerli bir profile ile imzalanması gerekir.
+İmzasız IPA her başarılı derlemede üretilir; bunun için Apple hesabı veya imza secret değeri gerekmez. İmzalı IPA'nın kurulabilmesi cihazın kullanılan provisioning profile kapsamında olmasını gerektirir.
 
 İmzalı derleme için **Settings → Secrets and variables → Actions** bölümüne ekleyin:
 
@@ -60,7 +57,7 @@ Dashboard sesi kendisi çalmaz; iPhone'daki Spotify veya başka bir cihazı uzak
 | `IOS_TEAM_ID` | Apple Team ID |
 
 İsteğe bağlı repository değişkenleri: `IOS_SIGN_IDENTITY` (varsayılan `Apple Distribution`) ve `IOS_EXPORT_METHOD` (varsayılan `release-testing`; profile türüne uygun olmalı).
-Provisioning profile, `com.berkecaan.dashboard` bundle ID'si ve WeatherKit capability'siyle eşleşmelidir. Sertifika, token ve anahtarlar kaynak koda eklenmez. Derleme hata verirse ilgili çalıştırmadaki hata günlüğünü inceleyin; `xcodebuild` hataları iş akışını başarısız yapar.
+Provisioning profile, `com.berkecaan.dashboard` bundle ID'siyle eşleşmelidir. Sertifika, token ve anahtarlar kaynak koda eklenmez. Derleme hata verirse ilgili çalıştırmadaki hata günlüğünü inceleyin; `xcodebuild` hataları iş akışını başarısız yapar.
 
 ## Yapı
 ```
@@ -73,3 +70,12 @@ project.yml          XcodeGen proje tanımı
 ```
 
 Arşivin dış `dashboard-ios/` klasörü depo köküne açılır. Yanlışlıkla oluşturulmuş `{Dashboard/...` boş klasörleri, arşiv dosyaları, derleme çıktıları ve kişisel Xcode ayarları depoya eklenmez. `Dashboard.xcodeproj` XcodeGen ile üretildiği için `.gitignore` kapsamındadır.
+
+## 1.0.1 — ekran ve simge düzeltmeleri
+
+- Kullanılabilir ekran alanına göre hesaplanan sütunlar; kısa yatay ekrana uygun müzik ve hava kartları.
+- Kalıcı sol menü: panel, tam ekran harita, müzik, uygulama simgeleri ve ayarlar. Uygulamalar ekranı iç modülleri açar; iOS'ta yüklü tüm uygulamaları listelemez.
+- Şarkı yokken Spotify'ı açma ve durumu yenileme düğmeleri. Oynatma için Spotify Premium ve aktif cihaz gereksinimi devam eder.
+- Ana ekranda kullanılmak üzere opak 1024×1024 Dashboard uygulama simgesi; build numarası 2.
+
+Derleme kontrolü gerçek iPhone üzerinde görsel veya Spotify oturum testi yerine geçmez.

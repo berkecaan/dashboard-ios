@@ -269,8 +269,10 @@ final class SpotifyService: ObservableObject {
                 isPlaying = false
                 deviceName = nil
                 notice = "Aktif Spotify cihazı yok. Spotify uygulamasında bir şarkı başlatın."
+            case 403:
+                notice = "Spotify erişimi reddedildi. Premium ve geliştirici uygulamasının kullanıcı izinlerini kontrol edin."
             default:
-                break
+                notice = "Spotify durumu alınamadı (\(code))"
             }
         } catch SpotifyError.unauthorized {
             signOut()

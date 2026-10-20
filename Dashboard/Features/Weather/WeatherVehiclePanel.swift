@@ -7,112 +7,107 @@ struct WeatherVehiclePanel: View {
     @Environment(\.dashAccent) private var accent
 
     var body: some View {
-        VStack(spacing: 8) {
-            topRow
-            Divider().opacity(0.25)
-            bottomRow
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
-        .glassPanel()
-    }
-
-    private var topRow: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Label(location.city, systemImage: "location.fill")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(weather.temperature.map { "\(Int($0.rounded()))°" } ?? "--°")
-                        .font(.system(size: 52, weight: .bold, design: .rounded))
-                    Image(systemName: weather.symbol).symbolRenderingMode(.multicolor).font(.system(size: 30))
+        GeometryReader { geo in
+            let compact = geo.size.height < 240
+            VStack(alignment: .leading, spacing: compact ? 6 : 16) {
+                HStack(spacing: 6) {
+                    Label(location.city, systemImage: "location.fill")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 0)
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        Text(context.date, format: .dateTime.hour().minute())
+                            .font(.system(size: compact ? 22 : 42, weight: .semibold, design: .rounded)).monospacedDigit()
+                    }
                 }
-                if let err = weather.errorText {
-                    Text(err).font(.caption).foregroundStyle(.orange)
-                } else {
-                    Text(conditionLine).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
-                }
-            }
-            Spacer()
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text(ctx.date, format: .dateTime.hour().minute())
-                        .font(.system(size: 40, weight: .semibold, design: .rounded)).monospacedDigit()
-                    Text(ctx.date, format: .dateTime.weekday(.wide).day().month(.abbreviated))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private var conditionLine: String {
-        var s = weather.conditionText
-        if let f = weather.feelsLike { s += " · Hissedilen \(Int(f.rounded()))°" }
-        return s
-    }
-
-    private var bottomRow: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(Int(location.speedKmh.rounded()))")
-                        .font(.system(size: 46, weight: .heavy, design: .rounded)).monospacedDigit()
-                        .foregroundStyle(accent)
-                        .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.25), value: Int(location.speedKmh.rounded()))
-                    Text("km/s").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                }
-                if settings.showTrip {
-                    Button { location.resetTrip() } label: {
-                        Label(String(format: "%.1f km", location.tripDistanceKm), systemImage: "road.lanes")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    }.buttonStyle(.plain)
-                }
-            }
-            Spacer(minLength: 0)
-            if settings.showForecast {
-                HStack(spacing: 12) {
-                    ForEach(weather.daily.dropFirst().prefix(3)) { d in
-                        VStack(spacing: 2) {
-                            Text(d.date, format: .dateTime.weekday(.abbreviated)).font(.caption2).foregroundStyle(.secondary)
-                            Image(systemName: d.symbol).symbolRenderingMode(.multicolor).font(.callout)
-                            Text("\(Int(d.high.rounded()))°/\(Int(d.low.rounded()))°").font(.caption2.weight(.semibold))
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: weather.symbol).symbolRenderingMode(.multicolor)
+                        .font(.system(size: compact ? 23 : 40))
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(weather.temperature.map { "\(Int($0.rounded()))°" } ?? "--°")
+                            .font(.system(size: compact ? 32 : 64, weight: .bold, design: .rounded))
+                        Text(weather.errorText ?? weather.conditionText)
+                            .font(.system(size: compact ? 10 : 14)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                            Text("\(Int(location.speedKmh.rounded()))")
+                                .font(.system(size: compact ? 32 : 64, weight: .heavy, design: .rounded))
+                                .monospacedDigit().foregroundStyle(accent)
+                            Text("km/sa").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+                        }
+                        if settings.showTrip {
+                            Text(String(format: "%.1f km yol", location.tripDistanceKm))
+                                .font(.system(size: compact ? 10 : 14)).foregroundStyle(.secondary)
                         }
                     }
                 }
+                Spacer(minLength: 0)
+                if settings.showForecast && !weather.daily.isEmpty && geo.size.height > 135 {
+                    HStack(spacing: 6) {
+                        ForEach(weather.daily.dropFirst().prefix(3)) { day in
+                            VStack(spacing: 2) {
+                                Text(day.date, format: .dateTime.weekday(.abbreviated))
+                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 3) {
+                                    Image(systemName: day.symbol).symbolRenderingMode(.multicolor)
+                                    Text("\(Int(day.high.rounded()))°/\(Int(day.low.rounded()))°")
+                                }
+                            }
+                            .font(.system(size: compact ? 9 : 14))
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                HStack {
+                    Link("Hava verisi: Open-Meteo", destination: URL(string: "https://open-meteo.com/")!)
+                        .font(.system(size: 9)).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button { Task { await weather.refreshIfNeeded(for: location.location, force: true) } } label: {
+                        Image(systemName: "arrow.clockwise").font(.system(size: 11)).padding(4)
+                    }.buttonStyle(.plain).accessibilityLabel("Hava durumunu yenile")
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
+        .padding(12)
+        .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 25))
+        .overlay(RoundedRectangle(cornerRadius: 25).strokeBorder(.white.opacity(0.10)))
     }
 }
 
-/// Sade mod: büyük hız + saat + mini müzik kontrolü
 struct SimpleModePanel: View {
     @EnvironmentObject private var location: LocationService
     @EnvironmentObject private var spotify: SpotifyService
     @Environment(\.dashAccent) private var accent
 
     var body: some View {
-        VStack(spacing: 14) {
-            Spacer(minLength: 0)
-            Text("\(Int(location.speedKmh.rounded()))")
-                .font(.system(size: 110, weight: .heavy, design: .rounded)).monospacedDigit().foregroundStyle(accent)
-            Text("km/s").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                Text(ctx.date, format: .dateTime.hour().minute())
-                    .font(.system(size: 34, weight: .semibold, design: .rounded)).monospacedDigit()
-            }
-            Spacer(minLength: 0)
-            if spotify.status == .connected {
-                HStack(spacing: 18) {
-                    Text(spotify.track?.title ?? "—").font(.subheadline).lineLimit(1).frame(maxWidth: 140, alignment: .leading)
-                    GlassIconButton(systemName: "backward.fill", size: 50) { spotify.previous() }
-                    GlassIconButton(systemName: spotify.isPlaying ? "pause.fill" : "play.fill", size: 58, tint: accent) { spotify.togglePlayPause() }
-                    GlassIconButton(systemName: "forward.fill", size: 50) { spotify.next() }
+        GeometryReader { geo in
+            VStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Text("\(Int(location.speedKmh.rounded()))")
+                    .font(.system(size: min(110, geo.size.height * 0.3), weight: .heavy, design: .rounded))
+                    .monospacedDigit().foregroundStyle(accent)
+                Text("km/sa").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                Text(String(format: "%.1f km yol", location.tripDistanceKm)).font(.caption).foregroundStyle(.secondary)
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text(context.date, format: .dateTime.hour().minute())
+                        .font(.system(size: 28, weight: .semibold, design: .rounded)).monospacedDigit()
                 }
-            }
+                Spacer(minLength: 0)
+                if spotify.status == .connected {
+                    Text(spotify.track?.title ?? "Spotify'da bir şarkı başlatın")
+                        .font(.caption).lineLimit(1)
+                    HStack(spacing: 12) {
+                        GlassIconButton(systemName: "backward.fill", size: 40) { spotify.previous() }
+                        GlassIconButton(systemName: spotify.isPlaying ? "pause.fill" : "play.fill", size: 44, tint: accent) { spotify.togglePlayPause() }
+                        GlassIconButton(systemName: "forward.fill", size: 40) { spotify.next() }
+                    }
+                }
+            }.frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
-        .glassPanel()
+        .padding(12)
+        .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 25))
+        .overlay(RoundedRectangle(cornerRadius: 25).strokeBorder(.white.opacity(0.10)))
     }
 }

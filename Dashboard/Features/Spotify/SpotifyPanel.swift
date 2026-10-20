@@ -3,119 +3,126 @@ import SwiftUI
 struct SpotifyPanel: View {
     @EnvironmentObject private var spotify: SpotifyService
     @Environment(\.dashAccent) private var accent
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Group {
-            switch spotify.status {
-            case .notConfigured: message("Spotify için Ayarlar'dan Client ID girin", icon: "gearshape")
-            case .disconnected: connectView
-            case .connecting: message("Spotify'a bağlanılıyor…", icon: "arrow.triangle.2.circlepath")
-            case .connected: playerView
+        GeometryReader { geo in
+            Group {
+                switch spotify.status {
+                case .notConfigured: message("Ayarlar'dan Spotify Client ID girin", icon: "gearshape")
+                case .disconnected: connectView
+                case .connecting: message("Spotify'a bağlanılıyor…", icon: "arrow.triangle.2.circlepath")
+                case .connected:
+                    if spotify.track == nil { emptyPlayer }
+                    else { player(width: geo.size.width, height: geo.size.height) }
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
-        .glassPanel()
+        .padding(12)
+        .background(Color(white: 0.055), in: RoundedRectangle(cornerRadius: 25))
+        .overlay(RoundedRectangle(cornerRadius: 25).strokeBorder(.white.opacity(0.10)))
+        .task { await spotify.fetchState() }
     }
 
     private func message(_ text: String, icon: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: icon).font(.largeTitle).foregroundStyle(accent)
-            Text(text).font(.headline).multilineTextAlignment(.center).foregroundStyle(.secondary)
-        }
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.title2).foregroundStyle(.green)
+            Text(text).font(.subheadline).multilineTextAlignment(.center).foregroundStyle(.secondary)
+        }.padding(8)
     }
 
     private var connectView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "music.note").font(.system(size: 40)).foregroundStyle(.green)
-            Text("Spotify bağlı değil").font(.headline)
+        VStack(spacing: 8) {
+            Label("Spotify", systemImage: "music.note").font(.headline).foregroundStyle(.green)
             Button("Spotify'a Bağlan") { Task { await spotify.connect() } }
-                .buttonStyle(.glassProminent).tint(.green).controlSize(.large)
-            if let n = spotify.notice { Text(n).font(.caption).foregroundStyle(.orange) }
+                .buttonStyle(.borderedProminent).tint(.green)
+            if let notice = spotify.notice { Text(notice).font(.caption).lineLimit(2).foregroundStyle(.secondary) }
         }
     }
 
-    private var playerView: some View {
-        HStack(spacing: 16) {
-            artwork
-            VStack(alignment: .leading, spacing: 6) {
-                statusRow
-                Text(spotify.track?.title ?? "Çalan şarkı yok")
-                    .font(.title3.weight(.bold)).lineLimit(1).minimumScaleFactor(0.7)
-                Text(spotify.track?.artist ?? (spotify.notice ?? "Spotify'da bir şarkı başlatın"))
-                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+    private var emptyPlayer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Spotify bağlı", systemImage: "checkmark.circle.fill")
+                .font(.caption.weight(.semibold)).foregroundStyle(.green)
+            Text("Müziğini başlat").font(.headline)
+            Text(spotify.notice ?? "Spotify'da bir şarkı aç, ardından Dashboard'a dön.")
+                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            HStack(spacing: 10) {
+                Button("Spotify'ı aç", systemImage: "arrow.up.right.square") {
+                    openURL(URL(string: "https://open.spotify.com/")!)
+                }.buttonStyle(.borderedProminent).tint(.green).font(.caption.weight(.semibold))
+                Button { Task { await spotify.fetchState() } } label: {
+                    Image(systemName: "arrow.clockwise").frame(width: 40, height: 40)
+                }.buttonStyle(.plain).accessibilityLabel("Spotify durumunu yenile")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func player(width: CGFloat, height: CGFloat) -> some View {
+        let compact = height < 230
+        let artSize = min(width * 0.26, height * 0.65, compact ? 88 : 220)
+        return HStack(spacing: 10) {
+            artwork.frame(width: artSize, height: artSize).clipped()
+            VStack(alignment: .leading, spacing: compact ? 4 : 10) {
+                Label(spotify.deviceName.map { "Spotify · \($0)" } ?? "Spotify", systemImage: "waveform")
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(.green).lineLimit(1)
+                Text(spotify.track?.title ?? "")
+                    .font(compact ? .subheadline.weight(.bold) : .title2.weight(.bold))
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                Text(spotify.notice ?? spotify.track?.artist ?? "")
+                    .font(.caption).foregroundStyle(spotify.notice == nil ? .secondary : .orange).lineLimit(1)
                 Spacer(minLength: 0)
                 progress
-                controls
-            }
+                HStack(spacing: compact ? 8 : 18) {
+                    Spacer(minLength: 0)
+                    GlassIconButton(systemName: "backward.fill", size: compact ? 38 : 52) { spotify.previous() }
+                    GlassIconButton(systemName: spotify.isPlaying ? "pause.fill" : "play.fill", size: compact ? 42 : 62, tint: accent) {
+                        spotify.togglePlayPause()
+                    }
+                    GlassIconButton(systemName: "forward.fill", size: compact ? 38 : 52) { spotify.next() }
+                    Spacer(minLength: 0)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
     }
 
     private var artwork: some View {
         Group {
             if let url = spotify.track?.artworkURL {
-                AsyncImage(url: url) { img in img.resizable().scaledToFill() }
+                AsyncImage(url: url) { image in image.resizable().scaledToFill() }
                     placeholder: { Color.white.opacity(0.08) }
             } else {
-                ZStack { Color.white.opacity(0.08); Image(systemName: "music.note").font(.largeTitle).foregroundStyle(.secondary) }
+                ZStack { Color.white.opacity(0.08); Image(systemName: "music.note").font(.largeTitle).foregroundStyle(.green) }
             }
         }
-        .aspectRatio(1, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.6), radius: spotify.isPlaying ? 22 : 8, y: 10)
-        .scaleEffect(spotify.isPlaying ? 1 : 0.93)
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: spotify.isPlaying)
-    }
-
-    private var statusRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "waveform").symbolEffect(.variableColor.iterative, isActive: spotify.isPlaying)
-                .foregroundStyle(.green)
-            Text(spotify.deviceName.map { "Spotify · \($0)" } ?? "Spotify bağlı")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer()
-            Button { spotify.signOut() } label: {
-                Image(systemName: "link.badge.plus").rotationEffect(.degrees(45)).foregroundStyle(.secondary)
-            }.buttonStyle(.plain)
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private var progress: some View {
-        let dur = max(1, spotify.track?.durationMs ?? 1)
-        let frac = Double(spotify.progressMs) / Double(dur)
-        return VStack(spacing: 4) {
+        let duration = max(1, spotify.track?.durationMs ?? 1)
+        let fraction = min(1, max(0, Double(spotify.progressMs) / Double(duration)))
+        return VStack(spacing: 2) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.15))
-                    Capsule().fill(accent).frame(width: geo.size.width * min(1, max(0, frac)))
+                    Capsule().fill(.white.opacity(0.12))
+                    Capsule().fill(accent).frame(width: geo.size.width * fraction)
                 }
+                .frame(height: 4).frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onEnded { v in
-                    spotify.seek(toFraction: v.location.x / geo.size.width)
+                .gesture(DragGesture(minimumDistance: 0).onEnded { value in
+                    guard geo.size.width > 0 else { return }
+                    spotify.seek(toFraction: value.location.x / geo.size.width)
                 })
-            }
-            .frame(height: 8)
-            HStack {
-                Text(time(spotify.progressMs)); Spacer(); Text(time(spotify.track?.durationMs ?? 0))
-            }
-            .font(.caption2).monospacedDigit().foregroundStyle(.secondary)
-        }
-    }
-
-    private var controls: some View {
-        HStack(spacing: 22) {
-            Spacer()
-            GlassIconButton(systemName: "backward.fill", size: 52) { spotify.previous() }
-            GlassIconButton(systemName: spotify.isPlaying ? "pause.fill" : "play.fill", size: 62, tint: accent) {
-                spotify.togglePlayPause()
-            }
-            GlassIconButton(systemName: "forward.fill", size: 52) { spotify.next() }
-            Spacer()
+            }.frame(height: 12)
+            HStack { Text(time(spotify.progressMs)); Spacer(); Text(time(spotify.track?.durationMs ?? 0)) }
+                .font(.system(size: 9)).monospacedDigit().foregroundStyle(.secondary)
         }
     }
 
     private func time(_ ms: Int) -> String {
-        let s = ms / 1000
-        return String(format: "%d:%02d", s / 60, s % 60)
+        let seconds = max(0, ms / 1000)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }

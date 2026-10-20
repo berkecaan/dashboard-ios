@@ -91,7 +91,7 @@ struct NavigationPanel: View {
             }
         }
         .padding(.horizontal, 18).frame(height: 56)
-        .padding(.trailing, 70)
+        .padding(.trailing, 54)
         .glassEffect(.regular, in: Capsule())
     }
 
@@ -120,7 +120,7 @@ struct NavigationPanel: View {
             }
         }
         .frame(maxHeight: 190)
-        .padding(.trailing, 70)
+        .padding(.trailing, 54)
         .glassPanel(cornerRadius: 24)
     }
 
@@ -140,7 +140,7 @@ struct NavigationPanel: View {
             }
         }
         .frame(maxHeight: 190)
-        .padding(.trailing, 70)
+        .padding(.trailing, 54)
         .glassPanel(cornerRadius: 24)
     }
 
@@ -177,82 +177,79 @@ struct NavigationPanel: View {
             Spacer()
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
-        .padding(.trailing, 70)
+        .padding(.trailing, 54)
         .glassPanel(cornerRadius: 28)
     }
 
     // MARK: Alt rota kartı
 
     private var routeCard: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             if nav.routes.count > 1 && !nav.isNavigating {
-                HStack(spacing: 8) {
-                    ForEach(nav.routes.indices, id: \.self) { i in
-                        Button {
-                            nav.selectedRouteIndex = i
-                            fitRoute()
-                        } label: {
-                            Text("Rota \(i + 1) · \(Fmt.duration(nav.routes[i].expectedTravelTime))")
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14).frame(height: 40)
-                                .background(i == nav.selectedRouteIndex ? accent.opacity(0.35) : .white.opacity(0.08), in: Capsule())
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(nav.routes.indices, id: \.self) { index in
+                            Button {
+                                nav.selectedRouteIndex = index
+                                fitRoute()
+                            } label: {
+                                Text("Rota \(index + 1) · \(Fmt.duration(nav.routes[index].expectedTravelTime))")
+                                    .font(.caption.weight(.semibold)).padding(10)
+                                    .background(index == nav.selectedRouteIndex ? accent.opacity(0.3) : .white.opacity(0.08), in: Capsule())
+                            }.buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-                    Spacer()
                 }
             }
-            HStack(spacing: 18) {
+            HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(nav.eta, format: .dateTime.hour().minute())
-                        .font(.system(size: 34, weight: .bold, design: .rounded)).monospacedDigit()
-                    Text("Tahmini varış").font(.caption).foregroundStyle(.secondary)
+                        .font(.system(size: 24, weight: .bold, design: .rounded)).monospacedDigit()
+                    Text("Varış").font(.caption2).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Fmt.duration(nav.shownTime)).font(.title2.weight(.semibold))
-                    Text(Fmt.distance(nav.shownDistance)).font(.subheadline).foregroundStyle(.secondary)
+                    Text(Fmt.duration(nav.shownTime)).font(.subheadline.weight(.semibold))
+                    Text(Fmt.distance(nav.shownDistance)).font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer()
-                if !nav.isNavigating, let dest = nav.destination {
-                    GlassIconButton(systemName: favorites.isFavorite(dest) ? "star.fill" : "star",
-                                    tint: .yellow) { favorites.toggle(dest) }
+                Spacer(minLength: 0)
+                if !nav.isNavigating, let destination = nav.destination {
+                    GlassIconButton(systemName: favorites.isFavorite(destination) ? "star.fill" : "star",
+                                    size: 36, tint: .yellow) { favorites.toggle(destination) }
                 }
                 Button {
-                    if nav.isNavigating {
-                        nav.stop(); fitRoute()
-                    } else {
+                    if nav.isNavigating { nav.stop(); fitRoute() }
+                    else {
                         nav.start(from: location.location)
                         position = .userLocation(followsHeading: true, fallback: .automatic)
                     }
                 } label: {
                     Text(nav.isNavigating ? "Bitir" : "Başlat")
-                        .font(.title3.weight(.bold)).foregroundStyle(.black)
-                        .padding(.horizontal, 28).frame(height: 56)
+                        .font(.subheadline.weight(.bold)).foregroundStyle(.black)
+                        .padding(.horizontal, 14).frame(height: 44)
                         .background(nav.isNavigating ? Color.red : accent, in: Capsule())
-                }
-                .buttonStyle(.plain)
+                }.buttonStyle(.plain)
             }
         }
-        .padding(16)
-        .padding(.trailing, 70)
-        .glassPanel(cornerRadius: 28)
+        .padding(12)
+        .glassPanel(cornerRadius: 22)
+        .padding(.trailing, 54)
     }
 
     // MARK: Yan kontroller
 
     private var sideControls: some View {
         HStack {
-            Spacer()
-            VStack(spacing: 10) {
-                GlassIconButton(systemName: "gearshape.fill") { showSettings = true }
-                GlassIconButton(systemName: "star.circle") { showFavorites.toggle() }
-                GlassIconButton(systemName: "parkingsign") { favorites.saveParked(at: location.location) }
+            Spacer(minLength: 0)
+            VStack(spacing: 6) {
+                GlassIconButton(systemName: "gearshape.fill", size: 40) { showSettings = true }
+                GlassIconButton(systemName: "star.circle", size: 40) { showFavorites.toggle() }
+                GlassIconButton(systemName: "parkingsign", size: 40) { favorites.saveParked(at: location.location) }
                 Spacer(minLength: 0)
-                GlassIconButton(systemName: "plus") { zoom(0.55) }
-                GlassIconButton(systemName: "minus") { zoom(1.8) }
-                GlassIconButton(systemName: "location.fill", tint: accent) { fitUser() }
+                GlassIconButton(systemName: "plus", size: 40) { zoom(0.55) }
+                GlassIconButton(systemName: "minus", size: 40) { zoom(1.8) }
+                GlassIconButton(systemName: "location.fill", size: 40, tint: accent) { fitUser() }
             }
-            .padding(14)
+            .padding(10)
         }
     }
 

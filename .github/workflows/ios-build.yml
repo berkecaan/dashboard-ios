@@ -41,6 +41,20 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee build.log
+      - name: Validate packaged app icon
+        run: |
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+          bundle = Path(os.environ['RUNNER_TEMP']) / 'DerivedData/Build/Products/Release-iphoneos/Dashboard.app'
+          with (bundle / 'Info.plist').open('rb') as file:
+              info = plistlib.load(file)
+          primary = info.get('CFBundleIcons', {}).get('CFBundlePrimaryIcon', {})
+          assert primary.get('CFBundleIconName') == 'AppIcon', 'App icon metadata is missing'
+          assert (bundle / 'Assets.car').stat().st_size > 0, 'Compiled asset catalog is missing'
+          print('App icon is included in the built app.')
+          PY
       - name: Package unsigned IPA
         run: |
           APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/Dashboard.app"

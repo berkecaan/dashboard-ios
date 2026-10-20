@@ -18,6 +18,13 @@ struct SettingsView: View {
                     Toggle("Günlük tahmin", isOn: $settings.showForecast)
                     Toggle("Gidilen mesafe", isOn: $settings.showTrip)
                 }
+                Section {
+                    Link("Open-Meteo hava verileri", destination: URL(string: "https://open-meteo.com/")!)
+                    Text("Hava tahmini için konum koordinatlarınız Open-Meteo'ya gönderilir. Apple WeatherKit yetkisi veya API anahtarı gerekmez.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Text("Hava durumu")
+                }
                 Section("Navigasyon") {
                     Toggle("Sesli yönlendirme (Türkçe)", isOn: $settings.voiceGuidance)
                     Button("Gidilen mesafeyi sıfırla") { location.resetTrip() }
