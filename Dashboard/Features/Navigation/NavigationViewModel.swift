@@ -167,7 +167,7 @@ final class NavigationViewModel: ObservableObject {
 
     private static func distance(from p: MKMapPoint, toEndOf line: MKPolyline) -> CLLocationDistance {
         guard line.pointCount > 0 else { return .infinity }
-        return MKMetersBetweenMapPoints(p, line.points()[line.pointCount - 1])
+        return p.distance(to: line.points()[line.pointCount - 1])
     }
 
     private static func distanceToRoute(_ p: MKMapPoint, _ line: MKPolyline) -> CLLocationDistance {
