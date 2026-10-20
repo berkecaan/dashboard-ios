@@ -72,7 +72,7 @@ struct SpotifyPanel: View {
                     .font(compact ? .subheadline.weight(.bold) : .title2.weight(.bold))
                     .lineLimit(1).minimumScaleFactor(0.75)
                 Text(spotify.notice ?? spotify.track?.artist ?? "")
-                    .font(.caption).foregroundStyle(spotify.notice == nil ? .secondary : .orange).lineLimit(1)
+                    .font(.caption).foregroundStyle(spotify.notice == nil ? Color.secondary : Color.orange).lineLimit(1)
                 Spacer(minLength: 0)
                 progress
                 HStack(spacing: compact ? 8 : 18) {
